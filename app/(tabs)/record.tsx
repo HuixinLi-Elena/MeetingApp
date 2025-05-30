@@ -1,3 +1,4 @@
+// app/(tabs)/record.tsx
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio } from 'expo-av';
@@ -69,28 +70,6 @@ export default function RecordScreen() {
     }
   };
 
-  // 模拟转录功能（直接在组件内实现）
-  const mockTranscription = async (duration: number) => {
-    // 模拟API延迟
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    const mockTexts = [
-      "This is a test meeting recording. We discussed the project timeline and next steps for the upcoming sprint.",
-      "Today we covered the budget review and resource allocation for Q2. The team agreed on the new hiring plan.",
-      "The team meeting focused on sprint planning and task assignments. We reviewed user stories and estimated effort.",
-      "We reviewed the client feedback and planned the upcoming product demo. Marketing will prepare the presentation.",
-      "Discussion about the new feature implementation and testing strategy. QA team will start testing next week."
-    ];
-    
-    const randomText = mockTexts[Math.floor(Math.random() * mockTexts.length)];
-    
-    return {
-      success: true,
-      text: randomText,
-      duration: duration,
-    };
-  };
-
   const startRecording = async () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
@@ -124,17 +103,17 @@ export default function RecordScreen() {
         await recording.stopAndUnloadAsync();
         const uri = recording.getURI();
         
-        // 创建新的录音记录
+        // Create new recording record
         const newRecording: Recording = {
           id: Date.now().toString(),
           uri: uri || '',
           duration: recordingTime,
           timestamp: new Date().toISOString(),
           name: `Meeting ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
-          transcribing: true, // 开始转录
+          transcribing: true,
         };
 
-        // 先保存录音（包含转录状态）
+        // Save recording first
         const updatedRecordings = [newRecording, ...recordings];
         await saveRecordings(updatedRecordings);
         
@@ -144,12 +123,10 @@ export default function RecordScreen() {
 
         console.log('Recording saved, starting transcription...');
         
-        // 异步开始转录（不阻塞UI）
+        // Start transcription async
         setTimeout(() => {
           transcribeRecording(newRecording.id, recordingTime, newRecording.uri);
         }, 100);
-
-        
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to stop recording');
@@ -158,85 +135,79 @@ export default function RecordScreen() {
   };
 
   const transcribeRecording = async (recordingId: string, duration: number, audioUri?: string) => {
-  try {
-    console.log('Starting transcription for recording:', recordingId);
-    
-    // 获取音频URI
-    let uri = audioUri;
-    if (!uri) {
-      const foundRecording = recordings.find(r => r.id === recordingId);
-      if (!foundRecording) {
-        throw new Error('Recording not found in recordings array');
-      }
-      uri = foundRecording.uri;
-    }
-    
-    console.log('Using audio URI:', uri);
-    
-    // 检查是否配置了API密钥
-    const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-    
-    if (!OPENAI_API_KEY) {
-      // 如果没有API密钥，使用模拟转录
-      const mockTexts = [
-        "This is a mock transcription. Please configure your OpenAI API key for real speech-to-text.",
-        "Mock result: We discussed the project roadmap and team assignments.",
-        "Test transcription: The meeting covered budget planning and resource allocation.",
-      ];
-      
-      const randomText = mockTexts[Math.floor(Math.random() * mockTexts.length)];
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      const result = { success: true, text: randomText, duration: duration };
-      
-      // 更新录音记录
-      setRecordings(prevRecordings => {
-        const updated = prevRecordings.map(r => {
-          if (r.id === recordingId) {
-            return { ...r, transcribing: false, transcription: result.text };
-          }
-          return r;
-        });
-        AsyncStorage.setItem('recordings', JSON.stringify(updated));
-        return updated;
-      });
-      
-      return;
-    }
-    
-    // 使用真实的OpenAI API
     try {
-      const response = await fetch(uri);
-      const audioBlob = await response.blob();
+      console.log('Starting transcription for recording:', recordingId);
       
-      const formData = new FormData();
-      formData.append('file', audioBlob, 'recording.m4a');
-      formData.append('model', 'whisper-1');
-      formData.append('language', 'en');
-      
-      const apiResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        },
-        body: formData,
-      });
-      
-      if (!apiResponse.ok) {
-        throw new Error(`OpenAI API error: ${apiResponse.status}`);
+      let uri = audioUri;
+      if (!uri) {
+        const foundRecording = recordings.find(r => r.id === recordingId);
+        if (!foundRecording) {
+          throw new Error('Recording not found in recordings array');
+        }
+        uri = foundRecording.uri;
       }
       
-      const result = await apiResponse.json();
-      console.log('Real transcription completed:', result.text);
+      console.log('Using audio URI:', uri);
       
-      // 更新录音记录
+      // Check if API key is configured
+      try {
+        // Try to import and use the TranscriptionService
+        const { TranscriptionService } = await import('../../src/services/TranscriptionService');
+        const result = await TranscriptionService.transcribeAudio(uri);
+        
+        // Update recording record
+        setRecordings(prevRecordings => {
+          const updated = prevRecordings.map(r => {
+            if (r.id === recordingId) {
+              return { 
+                ...r, 
+                transcribing: false, 
+                transcription: result.success ? result.transcription : `Transcription failed: ${result.error}` 
+              };
+            }
+            return r;
+          });
+          AsyncStorage.setItem('recordings', JSON.stringify(updated));
+          return updated;
+        });
+        
+      } catch (serviceError) {
+        console.log('TranscriptionService not available, using mock transcription');
+        
+        // Use mock transcription if service is not available
+        const mockTexts = [
+          "This is a mock transcription. Please configure your OpenAI API key for real speech-to-text.",
+          "Mock result: We discussed the project roadmap and team assignments.",
+          "Test transcription: The meeting covered budget planning and resource allocation.",
+        ];
+        
+        const randomText = mockTexts[Math.floor(Math.random() * mockTexts.length)];
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Update recording record
+        setRecordings(prevRecordings => {
+          const updated = prevRecordings.map(r => {
+            if (r.id === recordingId) {
+              return { ...r, transcribing: false, transcription: randomText };
+            }
+            return r;
+          });
+          AsyncStorage.setItem('recordings', JSON.stringify(updated));
+          return updated;
+        });
+      }
+      
+    } catch (error) {
+      console.error('Transcription error:', error);
+      
+      // On failure, show error message
       setRecordings(prevRecordings => {
         const updated = prevRecordings.map(r => {
           if (r.id === recordingId) {
-            return {
-              ...r,
-              transcribing: false,
-              transcription: result.text || 'No transcription available',
+            return { 
+              ...r, 
+              transcribing: false, 
+              transcription: `Transcription failed: ${error.message}` 
             };
           }
           return r;
@@ -244,33 +215,8 @@ export default function RecordScreen() {
         AsyncStorage.setItem('recordings', JSON.stringify(updated));
         return updated;
       });
-      
-    } catch (apiError) {
-      console.error('OpenAI API error:', apiError);
-      throw new Error(`API failed: ${apiError.message}`);
     }
-    
-  } catch (error) {
-    console.error('Transcription error:', error);
-    
-    // 失败时显示错误信息
-    setRecordings(prevRecordings => {
-      const updated = prevRecordings.map(r => {
-        if (r.id === recordingId) {
-          return { 
-            ...r, 
-            transcribing: false, 
-            transcription: `Transcription failed: ${error.message}` 
-          };
-        }
-        return r;
-      });
-      AsyncStorage.setItem('recordings', JSON.stringify(updated));
-      return updated;
-    });
-  }
-};
-
+  };
 
   const playRecording = async (recordingItem: Recording) => {
     try {
@@ -381,7 +327,7 @@ export default function RecordScreen() {
                     {formatTime(item.duration)} • {formatDate(item.timestamp)}
                   </Text>
                   
-                  {/* 转录状态和结果 */}
+                  {/* Transcription status and results */}
                   <View style={styles.transcriptionContainer}>
                     {item.transcribing ? (
                       <View style={styles.transcribingIndicator}>
@@ -464,7 +410,7 @@ const styles = StyleSheet.create({
   recordingControls: { flexDirection: 'row', alignItems: 'center' },
   controlButton: { padding: 8, marginLeft: 8 },
   
-  // 转录相关样式
+  // Transcription related styles
   transcriptionContainer: { marginTop: 5 },
   transcribingIndicator: { 
     flexDirection: 'row', 

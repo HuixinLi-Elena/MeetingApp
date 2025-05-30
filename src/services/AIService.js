@@ -1,13 +1,20 @@
 // src/services/AIService.js
+import { EXPO_PUBLIC_OPENAI_API_KEY } from '@env';
 
 export class AIService {
   static async chatWithTranscript(userMessage, transcript, conversationHistory = []) {
     try {
-      const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      const OPENAI_API_KEY = EXPO_PUBLIC_OPENAI_API_KEY;
       
       if (!OPENAI_API_KEY) {
+        console.error('OpenAI API key not found. Available keys:', {
+          EXPO_PUBLIC_OPENAI_API_KEY
+        });
         throw new Error('OpenAI API key not configured');
       }
+
+      // 确保 conversationHistory 是数组
+      const history = Array.isArray(conversationHistory) ? conversationHistory : [];
 
       // 构建对话消息
       const messages = [
@@ -19,7 +26,7 @@ export class AIService {
 
 Please answer questions about this meeting content. Be concise and helpful. If the user asks about something not mentioned in the transcript, politely say so.`
         },
-        ...conversationHistory,
+        ...history,
         {
           role: 'user',
           content: userMessage
@@ -44,6 +51,7 @@ Please answer questions about this meeting content. Be concise and helpful. If t
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.error('OpenAI API Error:', response.status, errorText);
         throw new Error(`OpenAI Chat API error: ${response.status} - ${errorText}`);
       }
 
@@ -57,7 +65,7 @@ Please answer questions about this meeting content. Be concise and helpful. If t
       };
 
     } catch (error) {
-      console.error('Chat error:', error);
+      console.error('Chat error details:', error);
       return {
         success: false,
         error: error.message,
@@ -68,7 +76,7 @@ Please answer questions about this meeting content. Be concise and helpful. If t
 
   static async generateSummary(transcript) {
     try {
-      const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      const OPENAI_API_KEY = EXPO_PUBLIC_OPENAI_API_KEY;
       
       if (!OPENAI_API_KEY) {
         throw new Error('OpenAI API key not configured');
@@ -135,7 +143,7 @@ Keep it concise but comprehensive.`
 
   static async extractKeywords(transcript) {
     try {
-      const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      const OPENAI_API_KEY = EXPO_PUBLIC_OPENAI_API_KEY;
       
       if (!OPENAI_API_KEY) {
         throw new Error('OpenAI API key not configured');
