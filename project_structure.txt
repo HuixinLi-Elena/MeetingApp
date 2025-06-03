@@ -1,0 +1,101 @@
+.
+├── app
+│   ├── _layout_backup.tsx
+│   ├── _layout.tsx
+│   ├── (auth)
+│   │   ├── _layout.tsx
+│   │   ├── index.tsx
+│   │   └── login.tsx
+│   ├── (tabs)
+│   │   ├── _layout.tsx
+│   │   ├── calendar.tsx
+│   │   ├── chat.tsx
+│   │   ├── index.tsx
+│   │   ├── questions.tsx
+│   │   ├── record.tsx
+│   │   └── test-api.tsx
+│   └── index.tsx
+├── app_backup
+│   ├── _layout.tsx
+│   ├── (tabs)
+│   │   ├── _layout.tsx
+│   │   ├── explore.tsx
+│   │   └── index.tsx
+│   ├── +not-found.tsx
+│   └── app
+│       ├── _layout.tsx
+│       ├── (auth)
+│       │   ├── _layout.tsx
+│       │   ├── index.tsx
+│       │   └── login.tsx
+│       ├── (tabs)
+│       │   ├── _layout.tsx
+│       │   ├── calendar.tsx
+│       │   ├── index.tsx
+│       │   └── questions.tsx
+│       └── index.tsx
+├── app.json
+├── assets
+│   ├── fonts
+│   │   └── SpaceMono-Regular.ttf
+│   └── images
+│       ├── adaptive-icon.png
+│       ├── favicon.png
+│       ├── icon.png
+│       ├── partial-react-logo.png
+│       ├── react-logo.png
+│       ├── react-logo@2x.png
+│       ├── react-logo@3x.png
+│       └── splash-icon.png
+├── babel.config.js
+├── components
+│   ├── Collapsible.tsx
+│   ├── ExternalLink.tsx
+│   ├── HapticTab.tsx
+│   ├── HelloWave.tsx
+│   ├── ParallaxScrollView.tsx
+│   ├── ThemedText.tsx
+│   ├── ThemedView.tsx
+│   └── ui
+│       ├── IconSymbol.ios.tsx
+│       ├── IconSymbol.tsx
+│       ├── TabBarBackground.ios.tsx
+│       └── TabBarBackground.tsx
+├── constants
+│   └── Colors.ts
+├── eslint.config.js
+├── hooks
+│   ├── useColorScheme.ts
+│   ├── useColorScheme.web.ts
+│   └── useThemeColor.ts
+├── LICENSE
+├── package-lock.json
+├── package.json
+├── project_structure.txt
+├── README.md
+├── scripts
+│   └── reset-project.js
+├── src
+│   ├── components
+│   ├── context
+│   │   └── AuthContext.tsx
+│   ├── navigation
+│   ├── screens
+│   │   ├── auth
+│   │   └── main
+│   ├── services
+│   │   ├── AIService.js
+│   │   ├── api
+│   │   ├── AudioRecordingManager.js
+│   │   ├── auth
+│   │   ├── IntelligentSummaryService.ts
+│   │   ├── StorageManager.js
+│   │   └── TranscriptionService.ts
+│   ├── styles
+│   ├── types
+│   │   └── env.d.ts
+│   └── utils
+│       └── audioHelpers.js
+└── tsconfig.json
+
+30 directories, 69 files

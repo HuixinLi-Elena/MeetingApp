@@ -1,6 +1,7 @@
 // src/services/AudioRecordingManager.js
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio } from 'expo-av';
+import { storageManager } from './StorageManager';
 
 export class AudioRecordingManager {
   constructor() {
@@ -11,17 +12,28 @@ export class AudioRecordingManager {
     this.currentSegmentIndex = 0;
     this.meetingStartTime = null;
     this.segmentDuration = 30000; // 30 seconds
-    this.onSegmentComplete = null; // callback function
-    this.onTranscriptionUpdate = null; // transcription update callback
+    this.onSegmentComplete = null;
+    this.onTranscriptionUpdate = null;
+    this.maxSegmentsInMemory = 10;
+    this.audioQualityMode = 'high';
   }
 
-  // Set callback functions
   setCallbacks(onSegmentComplete, onTranscriptionUpdate) {
     this.onSegmentComplete = onSegmentComplete;
     this.onTranscriptionUpdate = onTranscriptionUpdate;
   }
 
-  // Initialize audio permissions
+  setAudioQuality(mode) {
+    this.audioQualityMode = mode;
+  }
+
+  // Simplified recording options for better compatibility
+  getRecordingOptions() {
+    // Use the built-in preset which is more reliable
+    return Audio.RecordingOptionsPresets.HIGH_QUALITY;
+  }
+
+  // Simplified audio initialization to avoid iOS issues
   async initializeAudio() {
     try {
       console.log('Requesting audio permissions...');
@@ -31,15 +43,18 @@ export class AudioRecordingManager {
         throw new Error('Audio permission denied');
       }
 
+      // Use minimal audio mode settings to avoid compatibility issues
+      console.log('Setting minimal audio mode...');
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-        staysActiveInBackground: false,
+        // Remove problematic iOS-specific settings
       });
 
-      console.log('Audio permissions and mode set successfully');
+      // Initialize storage manager
+      await storageManager.initialize();
+
+      console.log('Audio permissions and storage initialized successfully');
       return true;
     } catch (error) {
       console.error('Audio initialization failed:', error);
@@ -47,7 +62,7 @@ export class AudioRecordingManager {
     }
   }
 
-  // Start long recording (auto-segmented)
+  // Start long recording with auto-segmentation
   async startLongRecording(meetingTitle = '') {
     try {
       console.log('Starting long meeting recording...');
@@ -74,6 +89,7 @@ export class AudioRecordingManager {
         if (this.isRecording) {
           await this.finishCurrentSegment();
           await this.startNewSegment(meetingId, meetingTitle);
+          this.cleanupMemory();
         }
       }, this.segmentDuration);
 
@@ -97,40 +113,29 @@ export class AudioRecordingManager {
       // Create new recording instance
       this.recording = new Audio.Recording();
       
-      // High quality recording settings
-      const recordingOptions = {
-        android: {
-          extension: '.m4a',
-          outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
-          audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
-          sampleRate: 44100,
-          numberOfChannels: 2,
-          bitRate: 128000,
-        },
-        ios: {
-          extension: '.m4a',
-          audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
-          sampleRate: 44100,
-          numberOfChannels: 2,
-          bitRate: 128000,
-          linearPCMBitDepth: 16,
-          linearPCMIsBigEndian: false,
-          linearPCMIsFloat: false,
-        },
-        web: {
-          mimeType: 'audio/webm;codecs=opus',
-          bitsPerSecond: 128000,
-        },
-      };
+      // Get recording options - use the preset for simplicity
+      const recordingOptions = this.getRecordingOptions();
+      console.log('Using recording preset: HIGH_QUALITY');
 
       await this.recording.prepareToRecordAsync(recordingOptions);
       await this.recording.startAsync();
+      
+      // Set recording status update listener
+      this.recording.setOnRecordingStatusUpdate(this.onRecordingStatusUpdate.bind(this));
       
       console.log(`Segment ${this.currentSegmentIndex} recording...`);
 
     } catch (error) {
       console.error(`Failed to start segment ${this.currentSegmentIndex} recording:`, error);
       throw error;
+    }
+  }
+
+  // Handle recording status updates
+  onRecordingStatusUpdate(status) {
+    if (status.isRecording) {
+      // Can monitor audio levels here
+      // console.log('Recording metering:', status.metering);
     }
   }
 
@@ -141,22 +146,43 @@ export class AudioRecordingManager {
     try {
       console.log(`Finishing segment ${this.currentSegmentIndex}...`);
       
+      // Get recording status before stopping
+      const statusBeforeStop = await this.recording.getStatusAsync();
+      
       await this.recording.stopAndUnloadAsync();
       const uri = this.recording.getURI();
-      const status = await this.recording.getStatusAsync();
+      
+      if (!uri) {
+        throw new Error('Recording URI is null');
+      }
+
+      // Calculate duration
+      let duration = 0;
+      if (statusBeforeStop && statusBeforeStop.durationMillis) {
+        duration = Math.floor(statusBeforeStop.durationMillis / 1000);
+      } else {
+        // Fallback calculation
+        duration = this.currentSegmentIndex === 1 ? 
+          Math.min(30, Math.floor((Date.now() - this.meetingStartTime.getTime()) / 1000)) : 
+          30;
+      }
       
       // Create segment information
       const segment = {
         id: `segment_${this.currentSegmentIndex}_${Date.now()}`,
         segmentIndex: this.currentSegmentIndex,
         uri: uri,
-        duration: Math.floor((status.durationMillis || this.segmentDuration) / 1000),
+        duration: duration,
         timestamp: new Date().toISOString(),
-        size: status.metering || 0,
+        size: 0,
         isTranscribed: false,
         transcription: '',
         meetingStartTime: this.meetingStartTime.toISOString(),
       };
+      
+      // Save audio file to persistent storage
+      const localUri = await storageManager.saveAudioSegment(segment, uri);
+      segment.localUri = localUri;
       
       this.segments.push(segment);
       
@@ -177,46 +203,99 @@ export class AudioRecordingManager {
 
     } catch (error) {
       console.error(`Failed to finish segment ${this.currentSegmentIndex}:`, error);
+      throw error;
     }
   }
 
-  // Async transcribe segment
-  async transcribeSegmentAsync(segment) {
+  // Memory management - remove old segments from memory
+  cleanupMemory() {
+    if (this.segments.length > this.maxSegmentsInMemory) {
+      const removed = this.segments.splice(0, this.segments.length - this.maxSegmentsInMemory);
+      console.log(`Removed ${removed.length} segments from memory to free up space`);
+    }
+  }
+
+  // Async transcribe segment with retry logic
+  // 修复后的转录方法
+  async transcribeSegmentAsync(segment, retryCount = 0) {
     try {
-      console.log(`Starting transcription for segment ${segment.segmentIndex}...`);
+      console.log(`=== Starting transcription for segment ${segment.segmentIndex} ===`);
+      console.log(`Retry count: ${retryCount}`);
+      console.log(`Audio URI: ${segment.localUri || segment.uri}`);
       
       // Dynamic import transcription service
       const { TranscriptionService } = await import('./TranscriptionService');
       
-      const result = await TranscriptionService.transcribeAudio(segment.uri);
+      // 使用本地URI进行转录
+      const audioUri = segment.localUri || segment.uri;
+      console.log(`Transcribing audio from: ${audioUri}`);
       
-      if (result.success) {
-        // Update segment transcription
-        segment.transcription = result.transcription;
+      // 使用带重试的转录方法
+      const result = await TranscriptionService.transcribeAudioWithRetry(audioUri, 2);
+      
+      console.log(`Transcription result for segment ${segment.segmentIndex}:`, {
+        success: result.success,
+        transcriptionLength: result.transcription?.length || 0,
+        error: result.error
+      });
+      
+      if (result.success && result.transcription && result.transcription.trim().length > 0) {
+        // 更新segment转录
+        segment.transcription = result.transcription.trim();
         segment.isTranscribed = true;
+        segment.transcriptionError = null;
         
-        // Update local storage
+        console.log(`✅ Segment ${segment.segmentIndex} transcription completed: "${result.transcription.substring(0, 50)}..."`);
+        
+        // 更新本地存储
         await this.updateSegmentInStorage(segment);
         
-        // Trigger transcription update callback
+        // 触发转录更新回调
         if (this.onTranscriptionUpdate) {
           this.onTranscriptionUpdate(segment);
         }
         
-        console.log(`Segment ${segment.segmentIndex} transcription completed`);
       } else {
-        console.error(`Segment ${segment.segmentIndex} transcription failed:`, result.error);
+        throw new Error(result.error || 'Empty transcription result');
       }
       
     } catch (error) {
-      console.error(`Error transcribing segment ${segment.segmentIndex}:`, error);
+      console.error(`❌ Error transcribing segment ${segment.segmentIndex}:`, error);
+      
+      // 实现重试逻辑
+      if (retryCount < 3) {
+        const retryDelay = Math.pow(2, retryCount) * 2000; // 2s, 4s, 8s
+        console.log(`⏳ Retrying transcription for segment ${segment.segmentIndex} in ${retryDelay}ms...`);
+        
+        setTimeout(async () => {
+          try {
+            await this.transcribeSegmentAsync(segment, retryCount + 1);
+          } catch (retryError) {
+            console.error(`Retry failed for segment ${segment.segmentIndex}:`, retryError);
+          }
+        }, retryDelay);
+      } else {
+        // 超过最大重试次数，标记为失败
+        console.error(`🚫 Failed to transcribe segment ${segment.segmentIndex} after ${retryCount + 1} attempts`);
+        segment.transcriptionError = error.message;
+        segment.isTranscribed = false;
+        segment.transcription = '';
+        
+        // 保存错误状态
+        await this.updateSegmentInStorage(segment);
+        
+        // 仍然触发回调，让UI知道转录失败
+        if (this.onTranscriptionUpdate) {
+          this.onTranscriptionUpdate(segment);
+        }
+      }
     }
   }
 
   // Stop recording
-  async stopRecording() {
+    async stopRecording() {
     try {
-      console.log('Stopping meeting recording...');
+      console.log('=== Stopping meeting recording ===');
       
       this.isRecording = false;
       
@@ -231,31 +310,114 @@ export class AudioRecordingManager {
         await this.finishCurrentSegment();
       }
       
+      // Get all segments for this meeting
+      console.log('Getting all meeting segments...');
+      const allSegments = await this.getAllMeetingSegments();
+      console.log('Found segments for this meeting:', allSegments.length);
+      
+      // Wait a moment for any pending transcriptions
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Get updated segments with transcriptions
+      const updatedSegments = await this.getAllMeetingSegments();
+      console.log('Updated segments count:', updatedSegments.length);
+      
       // Create complete meeting record
       const meetingRecord = {
         id: `meeting_${this.meetingStartTime.getTime()}`,
+        title: `Meeting ${new Date(this.meetingStartTime).toLocaleDateString()} ${new Date(this.meetingStartTime).toLocaleTimeString()}`,
         startTime: this.meetingStartTime.toISOString(),
         endTime: new Date().toISOString(),
         totalDuration: Math.floor((Date.now() - this.meetingStartTime.getTime()) / 1000),
-        segmentCount: this.segments.length,
-        segments: this.segments,
+        segmentCount: updatedSegments.length,
+        segments: updatedSegments,
         isComplete: true,
+        isRecording: false,
       };
+      
+      console.log('Created meeting record:', {
+        id: meetingRecord.id,
+        title: meetingRecord.title,
+        segmentCount: meetingRecord.segmentCount,
+        totalDuration: meetingRecord.totalDuration
+      });
       
       // Save complete meeting record
       await this.saveMeetingRecord(meetingRecord);
       
-      console.log(`Meeting recording completed, ${this.segments.length} segments, total duration ${meetingRecord.totalDuration}s`);
+      // Get storage statistics
+      const stats = await storageManager.getStorageStats();
+      console.log('Storage stats:', stats);
+      
+      console.log(`✅ Meeting recording completed: ${updatedSegments.length} segments, ${meetingRecord.totalDuration}s total`);
       
       return {
         success: true,
         meeting: meetingRecord,
-        segments: this.segments,
+        segments: updatedSegments,
+        storageStats: stats,
       };
       
     } catch (error) {
-      console.error('Failed to stop recording:', error);
+      console.error('❌ Failed to stop recording:', error);
       return { success: false, error: error.message };
+    }
+  }
+
+  // Fixed method to get all segments for current meeting
+  async getAllMeetingSegments() {
+    try {
+      if (!this.meetingStartTime) {
+        console.warn('No meeting start time available');
+        return [];
+      }
+      
+      const meetingStartTimeISO = this.meetingStartTime.toISOString();
+      console.log('Looking for segments with meeting start time:', meetingStartTimeISO);
+      
+      const existingSegments = await AsyncStorage.getItem('audioSegments');
+      const allSegments = existingSegments ? JSON.parse(existingSegments) : [];
+      
+      console.log('Total segments in storage:', allSegments.length);
+      
+      // Filter segments for current meeting
+      const meetingSegments = allSegments.filter(s => 
+        s.meetingStartTime === meetingStartTimeISO
+      );
+      
+      console.log('Segments for this meeting:', meetingSegments.length);
+      
+      // Sort by segment index
+      const sortedSegments = meetingSegments.sort((a, b) => a.segmentIndex - b.segmentIndex);
+      
+      console.log('Sorted segments:', sortedSegments.map(s => ({
+        index: s.segmentIndex,
+        isTranscribed: s.isTranscribed,
+        transcriptionLength: s.transcription?.length || 0
+      })));
+      
+      return sortedSegments;
+    } catch (error) {
+      console.error('Failed to get all meeting segments:', error);
+      return this.segments; // Fallback to in-memory segments
+    }
+  }
+
+  // Get all segments for current meeting
+  async getAllMeetingSegments() {
+    try {
+      const existingSegments = await AsyncStorage.getItem('audioSegments');
+      const allSegments = existingSegments ? JSON.parse(existingSegments) : [];
+      
+      // Filter segments for current meeting
+      const meetingSegments = allSegments.filter(s => 
+        s.meetingStartTime === this.meetingStartTime.toISOString()
+      );
+      
+      return meetingSegments.sort((a, b) => a.segmentIndex - b.segmentIndex);
+    } catch (error) {
+      console.error('Failed to get all meeting segments:', error);
+      return this.segments;
     }
   }
 
@@ -293,6 +455,7 @@ export class AudioRecordingManager {
         if (this.isRecording) {
           await this.finishCurrentSegment();
           await this.startNewSegment(meetingId, meetingTitle);
+          this.cleanupMemory();
         }
       }, this.segmentDuration);
       
@@ -327,20 +490,48 @@ export class AudioRecordingManager {
         segments[index] = updatedSegment;
         await AsyncStorage.setItem('audioSegments', JSON.stringify(segments));
       }
+      
+      // Also update in storage manager
+      await storageManager.saveSegmentMetadata(updatedSegment);
     } catch (error) {
       console.error('Failed to update segment:', error);
     }
   }
 
   // Save complete meeting record
-  async saveMeetingRecord(meetingRecord) {
+    async saveMeetingRecord(meetingRecord) {
     try {
+      console.log('=== Saving Meeting Record ===');
+      console.log('Meeting ID:', meetingRecord.id);
+      console.log('Meeting title:', meetingRecord.title);
+      console.log('Segment count:', meetingRecord.segments?.length || 0);
+      
       const existingMeetings = await AsyncStorage.getItem('meetings');
       const meetings = existingMeetings ? JSON.parse(existingMeetings) : [];
-      meetings.push(meetingRecord);
+      
+      console.log('Existing meetings count:', meetings.length);
+      
+      // Check if meeting already exists
+      const existingIndex = meetings.findIndex(m => m.id === meetingRecord.id);
+      if (existingIndex !== -1) {
+        meetings[existingIndex] = meetingRecord;
+        console.log('Updated existing meeting at index:', existingIndex);
+      } else {
+        meetings.unshift(meetingRecord); // Add to beginning
+        console.log('Added new meeting, total count now:', meetings.length);
+      }
+      
       await AsyncStorage.setItem('meetings', JSON.stringify(meetings));
+      console.log('✅ Meeting record saved successfully');
+      
+      // Verify the save
+      const verifyData = await AsyncStorage.getItem('meetings');
+      const verifyMeetings = verifyData ? JSON.parse(verifyData) : [];
+      console.log('Verification: meetings count after save:', verifyMeetings.length);
+      
     } catch (error) {
-      console.error('Failed to save meeting record:', error);
+      console.error('❌ Failed to save meeting record:', error);
+      throw error;
     }
   }
 
@@ -371,5 +562,16 @@ export class AudioRecordingManager {
       }
     }
     return null;
+  }
+
+  // Clean up old recordings
+  async cleanupOldRecordings(daysToKeep = 7) {
+    try {
+      const deletedCount = await storageManager.cleanupUploadedFiles(daysToKeep);
+      return deletedCount;
+    } catch (error) {
+      console.error('Failed to cleanup old recordings:', error);
+      return 0;
+    }
   }
 }

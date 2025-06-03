@@ -1,167 +1,215 @@
+// app/(auth)/login.tsx - TwinMind登录页面 100%还原
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  Platform,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useAuth } from '../../src/context/AuthContext';
 
 export default function LoginScreen() {
+  const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
-  const [loading, setLoading] = useState(false);
 
   const handleGoogleLogin = async () => {
-    setLoading(true);
-    
+    setIsLoading(true);
     try {
-      // 模拟Google登录
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const userData = {
-        id: '1',
-        name: 'Test User',
-        email: 'test@example.com',
-        avatar: 'https://via.placeholder.com/100',
-      };
-      
-      const token = 'mock_token_' + Date.now();
-      
-      await login(userData, token);
-      
-      Alert.alert('Success', 'Login successful!');
-      router.replace('/(tabs)');
+      // Simulate login process
+      const success = await login('user@example.com', 'password');
+      if (success) {
+        router.replace('/(tabs)');
+      } else {
+        Alert.alert('Login Failed', 'Please try again.');
+      }
     } catch (error) {
-      Alert.alert('Error', 'Login failed. Please try again.');
-      console.error('Login error:', error);
+      Alert.alert('Error', 'An error occurred during login.');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
+    }
+  };
+
+  const handleAppleLogin = async () => {
+    setIsLoading(true);
+    try {
+      // Simulate login process
+      const success = await login('user@icloud.com', 'password');
+      if (success) {
+        router.replace('/(tabs)');
+      } else {
+        Alert.alert('Login Failed', 'Please try again.');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'An error occurred during login.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
-        </View>
+    <View style={styles.container}>
+      {/* Gradient Background */}
+      <LinearGradient
+        colors={['#4A90E2', '#7B68EE', '#9A7FD1', '#B8A6D1', '#D4C4D1']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.gradientBackground}
+      >
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.content}>
+            {/* Logo Section */}
+            <View style={styles.logoSection}>
+              <View style={styles.logoContainer}>
+                <Text style={styles.logoText}>twin</Text>
+                <Text style={styles.logoText}>mind</Text>
+                <View style={styles.logoDots}>
+                  <View style={[styles.dot, styles.dot1]} />
+                  <View style={[styles.dot, styles.dot2]} />
+                  <View style={[styles.dot, styles.dot3]} />
+                </View>
+              </View>
+            </View>
 
-        <View style={styles.titleContainer}>
-          <Text style={styles.title}>Welcome to TwinMind</Text>
-          <Text style={styles.subtitle}>
-            Sign in to start recording and transcribing your meetings
-          </Text>
-        </View>
+            {/* Login Buttons */}
+            <View style={styles.loginSection}>
+              <TouchableOpacity 
+                style={styles.loginButton}
+                onPress={handleGoogleLogin}
+                disabled={isLoading}
+              >
+                <Ionicons name="logo-google" size={20} color="#4285F4" style={styles.buttonIcon} />
+                <Text style={styles.buttonText}>Continue with Google</Text>
+              </TouchableOpacity>
 
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity
-            style={[styles.button, styles.googleButton]}
-            onPress={handleGoogleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#333" />
-            ) : (
-              <Text style={styles.buttonText}>🔍 Sign in with Google</Text>
-            )}
-          </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.loginButton}
+                onPress={handleAppleLogin}
+                disabled={isLoading}
+              >
+                <Ionicons name="logo-apple" size={20} color="#000" style={styles.buttonIcon} />
+                <Text style={styles.buttonText}>Continue with Apple</Text>
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.button, styles.appleButton]}
-            onPress={() => Alert.alert('Coming Soon', 'Apple Sign-In will be available soon')}
-            disabled={loading}
-          >
-            <Text style={[styles.buttonText, styles.appleButtonText]}>
-              🍎 Sign in with Apple
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={styles.disclaimer}>
-          By signing in, you agree to our Terms of Service and Privacy Policy
-        </Text>
-      </View>
-    </SafeAreaView>
+              {/* Legal Links */}
+              <View style={styles.legalSection}>
+                <TouchableOpacity>
+                  <Text style={styles.legalText}>Privacy Policy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity>
+                  <Text style={styles.legalText}>Terms of Service</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </SafeAreaView>
+      </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0f4f8',
+  },
+  gradientBackground: {
+    flex: 1,
+  },
+  safeArea: {
+    flex: 1,
   },
   content: {
     flex: 1,
-    paddingHorizontal: 20,
+    justifyContent: 'space-between',
+    paddingHorizontal: 32,
+    paddingVertical: 48,
   },
-  header: {
-    paddingTop: 20,
-    marginBottom: 40,
-  },
-  backButton: {
-    alignSelf: 'flex-start',
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#007AFF',
-  },
-  titleContainer: {
-    alignItems: 'center',
-    marginBottom: 80,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 15,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  buttonContainer: {
-    marginBottom: 40,
-  },
-  button: {
-    width: '100%',
-    height: 50,
-    borderRadius: 8,
+
+  // Logo Section
+  logoSection: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 15,
   },
-  googleButton: {
+  logoContainer: {
+    alignItems: 'center',
+    position: 'relative',
+  },
+  logoText: {
+    fontSize: 48,
+    fontWeight: '300',
+    color: 'white',
+    lineHeight: 52,
+    letterSpacing: -1,
+  },
+  logoDots: {
+    flexDirection: 'row',
+    marginTop: 12,
+    gap: 8,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  dot1: {
+    backgroundColor: '#FFB347', // Orange
+  },
+  dot2: {
+    backgroundColor: '#87CEEB', // Sky blue
+  },
+  dot3: {
+    backgroundColor: '#98FB98', // Pale green
+  },
+
+  // Login Section
+  loginSection: {
+    gap: 16,
+  },
+  loginButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'white',
-    borderWidth: 1,
-    borderColor: '#ddd',
+    borderRadius: 25,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
-  appleButton: {
-    backgroundColor: 'black',
+  buttonIcon: {
+    marginRight: 12,
   },
   buttonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: '#000',
   },
-  appleButtonText: {
-    color: 'white',
+
+  // Legal Section
+  legalSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 24,
+    paddingHorizontal: 20,
   },
-  disclaimer: {
-    fontSize: 12,
-    color: '#888',
-    textAlign: 'center',
-    lineHeight: 18,
+  legalText: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+    textDecorationLine: 'underline',
   },
 });

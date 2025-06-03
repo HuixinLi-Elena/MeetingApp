@@ -1,19 +1,26 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+// src/context/AuthContext.tsx
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 
-const AuthContext = createContext({});
+interface User {
+  id: string;
+  name: string;
+  email: string;
+}
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-};
+interface AuthContextType {
+  user: User | null;
+  isLoading: boolean;
+  login: (email: string, password: string) => Promise<boolean>;
+  logout: () => Promise<void>;
+  isAuthenticated: boolean;
+}
 
-export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     checkAuthStatus();
@@ -21,43 +28,60 @@ export const AuthProvider = ({ children }) => {
 
   const checkAuthStatus = async () => {
     try {
-      const userData = await AsyncStorage.getItem('userData');
-      const userToken = await AsyncStorage.getItem('userToken');
-      
-      if (userData && userToken) {
+      const userData = await AsyncStorage.getItem('user');
+      if (userData) {
         setUser(JSON.parse(userData));
       }
     } catch (error) {
-      console.error('检查登录状态失败:', error);
+      console.error('Error checking auth status:', error);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const login = async (userData, token) => {
+  const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      await AsyncStorage.setItem('userData', JSON.stringify(userData));
-      await AsyncStorage.setItem('userToken', token);
-      setUser(userData);
+      setIsLoading(true);
+      
+      // 简单的模拟登录 - 在实际应用中这里应该调用真实的认证API
+      if (email && password) {
+        const userData: User = {
+          id: Date.now().toString(),
+          name: email.split('@')[0],
+          email: email,
+        };
+        
+        await AsyncStorage.setItem('user', JSON.stringify(userData));
+        setUser(userData);
+        return true;
+      }
+      
+      return false;
     } catch (error) {
-      console.error('登录保存失败:', error);
+      console.error('Login error:', error);
+      return false;
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const logout = async () => {
     try {
-      await AsyncStorage.multiRemove(['userData', 'userToken']);
+      setIsLoading(true);
+      await AsyncStorage.removeItem('user');
       setUser(null);
     } catch (error) {
-      console.error('登出失败:', error);
+      console.error('Logout error:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const value = {
+  const value: AuthContextType = {
     user,
+    isLoading,
     login,
     logout,
-    loading,
     isAuthenticated: !!user,
   };
 
@@ -66,4 +90,12 @@ export const AuthProvider = ({ children }) => {
       {children}
     </AuthContext.Provider>
   );
-};
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}

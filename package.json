@@ -11,6 +11,7 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "@expo/metro-runtime": "~5.0.4",
     "@expo/vector-icons": "^14.1.0",
     "@react-native-async-storage/async-storage": "^2.1.2",
     "@react-navigation/bottom-tabs": "^7.3.13",
@@ -48,7 +49,7 @@
     "react-native-screens": "~4.10.0",
     "react-native-web": "^0.20.0",
     "react-native-webview": "13.13.5",
-    "@expo/metro-runtime": "~5.0.4"
+    "expo-linear-gradient": "~14.1.4"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
